@@ -422,10 +422,7 @@ class GitExternal:
                     cmd = ["git", "clone"] + opts + [config["url"], path]
                     print(" ".join(cmd))
                     check_call(cmd)
-
-                    #if "--sparse" in opts:
                     self.update_sparse_checkout(repo, path, config)
-
                     cur_branch = self.get_branch_name(path)
                     branch = config.get('branch') or "master"
                     if cur_branch != branch:
