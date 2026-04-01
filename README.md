@@ -2,17 +2,31 @@
 
 You are tired of git-submodules? For some us cases, we all were
 tempted to scream at git submodules, since they do not work as
-svn:externals work.
+`svn:externals` work. git-external supports git, svn, and git-svn remotes as
+externals.
 
-This is an alternative to
-the [alternative](http://danielcestari.com/git-external/) written by
-Daniel Cestary. I really like Daniel's concept, but I cannot force my
-users to install a Ruby gem. Therefore this git-external is cramped
-into a single file, which can be commited into your project repository
-as a `./init` script.
+## Project Lore
 
-Furthermore, git-external also supports Git, SVN and Git SVN remotes
-as externals. And provides a mechanism to self update.
+This is an alternative to Christian Dietrich's
+[alternative](https://github.com/stettberger/git-external) to the
+[alternative](http://danielcestari.com/git-external/) to `git submodule` written by Daniel Cestary.
+
+Christian really like Daniel's concept, but could not force his
+users to install a Ruby gem. Therefore he crammed (his words) his
+reimplementation of git-external into a single python file, intended to be
+commited into your project repository as a `./init` script.
+
+I happened upon this project while searching for a solution to incrementally
+migrate a large number of svn repos that abused `svn:externals` as a makeshift
+dependency management system to git without breaking any builds. However, I
+have strong opinions on some design choices:
+- Copying this script into every repo and having it self-update is messy. It
+  is better to package & distribute it as a python wheel. Naming the
+  `project.script` to conform with git's automatic extension detection and
+  adding it to the shell's PATH should be a more robust approach.
+- Might as well modernize the build tooling to match the
+  [python dev's recommendations](https://packaging.python.org/en/latest/guides/tool-recommendations/#building-distributions).
+
 
 ## Why?
 
