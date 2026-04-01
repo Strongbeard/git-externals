@@ -564,8 +564,8 @@ class GitExternal:
                                help="Show externals recursive")
 
 
-if __name__ == "__main__":
 
+def main():
     parser = argparse.ArgumentParser(prog=sys.argv[0],
                                      description=sys.modules[__name__].__doc__)
     subparsers = parser.add_subparsers(help='sub-command help')
@@ -603,3 +603,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sys.exit(args.func(args))
+
+if __name__ == "__main__":
+    main()
