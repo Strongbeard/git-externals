@@ -62,22 +62,6 @@ def get_args(config, option):
         return [x for x in opts if x]
     return []
 
-class command_description:
-    """Decorator that adds a hidden attribute _commands to the class which
-    function was decorated. _commands is a list consisting of tuples of
-    (<command_name>, <command_help>, <function_that_executes_command>)
-    """
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __set_name__(self, owner, name):
-        if "_commands" not in owner.__dict__:
-            owner._commands = []
-        owner._commands.append((self.fn.__name__.replace('_', '-'),
-                                self.fn.__doc__, self.fn))
-        setattr(owner, name, self.fn)
-
-
 class GitExternal:
     updated_paths = set()
 
@@ -450,35 +434,6 @@ class GitExternal:
         if args.automatic:
             self.install_hook()
 
-    @command_description
-    def update(self, subparser):
-        """init or update the externals"""
-        subparser.set_defaults(func=self.cmd_update, only=None)
-        subparser.add_argument("-r", "--not-recursive", action="store_false",
-                               dest="recursive",
-                               help="Do not clone externals in externals.")
-        subparser.add_argument("-a", "--not-automatic", action="store_false",
-                               dest="automatic",
-                               help="Do not update externals on every pull.")
-
-        subparser.add_argument("external", nargs='?', default=None,
-                               help="Name of external to update")
-
-    @command_description
-    def clone(self, subparser):
-        """init or update the externals"""
-        subparser.set_defaults(func=self.cmd_update, only=('clone',))
-        subparser.add_argument("-r", "--not-recursive", action="store_false",
-                               dest="recursive",
-                               help="Do not clone externals in externals.")
-        subparser.add_argument("-a", "--not-automatic", action="store_false",
-                               dest="automatic",
-                               help="Do not update externals on every pull.")
-
-        subparser.add_argument("external", nargs='?', default=None,
-                               help="Name of external to update")
-
-
     def cmd_add(self, args):
         """Add an external.
 
@@ -487,24 +442,6 @@ class GitExternal:
         """
         self.add_external(args.URL, args.PATH,
                           vcs=args.vcs, branch=args.branch, script=args.script)
-
-    @command_description
-    def add(self, subparser):
-        """add a Git or Git SVN external"""
-        subparser.set_defaults(func=self.cmd_add)
-        subparser.add_argument("URL", help="Url of the external")
-        subparser.add_argument("PATH", help="Path where to clone the external")
-        subparser.add_argument("-b", "--branch", default="master",
-                               help="Branch that should be used")
-        subparser.add_argument("--script", default=None,
-                               help="Script to run after cloning the external")
-        vcs_group = subparser.add_mutually_exclusive_group()
-        vcs_group.add_argument("-s", "--svn", action='store_const',
-                               dest='vcs', const='svn', default='git',
-                               help="Use 'svn' for handling the external")
-        vcs_group.add_argument("-g", "--git-svn", action='store_const',
-                               dest='vcs', const='git-svn', default='git',
-                               help="Use 'git-svn' for handling the external")
 
     def cmd_show(self, args):
         """Show all externals."""
@@ -517,47 +454,76 @@ class GitExternal:
                 x = check_output(['./init', 'show'], cwd=config['path'])
                 print((b"\t"+x.replace(b"\n", b"\n\t")).decode())
 
-    @command_description
-    def show(self, subparser):
-        """show the externals configuration"""
-        subparser.set_defaults(func=self.cmd_show)
-        subparser.add_argument("-r", "--recursive", default=False,action='store_true',
-                               help="Show externals recursive")
-
 
 
 def main():
+    git_external = GitExternal()
+
     parser = argparse.ArgumentParser(prog=sys.argv[0],
                                      description=sys.modules[__name__].__doc__)
     subparsers = parser.add_subparsers(help='sub-command help')
 
-    modules = [GitExternal()]
+    # subcommand UPDATE
+    parser_update = subparsers.add_parser('update')
+    parser_update.set_defaults(func=git_external.cmd_update, only=None)
+    parser_update.add_argument("-r", "--not-recursive", action="store_false",
+                            dest="recursive",
+                            help="Do not clone externals in externals.")
+    parser_update.add_argument("-a", "--not-automatic", action="store_false",
+                            dest="automatic",
+                            help="Do not update externals on every pull.")
+
+    parser_update.add_argument("external", nargs='?', default=None,
+                            help="Name of external to update")
+
+    # subcommand CLONE
+    parser_clone = subparsers.add_parser('clone')
+    parser_clone.set_defaults(func=git_external.cmd_update, only=('clone',))
+    parser_clone.add_argument("-r", "--not-recursive", action="store_false",
+                            dest="recursive",
+                            help="Do not clone externals in externals.")
+    parser_clone.add_argument("-a", "--not-automatic", action="store_false",
+                            dest="automatic",
+                            help="Do not update externals on every pull.")
+    parser_clone.add_argument("external", nargs='?', default=None,
+                            help="Name of external to update")
+
+    # subcommand ADD
+    parser_add = subparsers.add_parser('add')
+    parser_add.set_defaults(func=git_external.cmd_add)
+    parser_add.add_argument("URL", help="Url of the external")
+    parser_add.add_argument("PATH", help="Path where to clone the external")
+    parser_add.add_argument(
+        "-b", "--branch", default="master",
+        help="Branch that should be used")
+    parser_add.add_argument(
+        "--script", default=None,
+        help="Script to run after cloning the external")
+    parser_add_vcs_group = parser_add.add_mutually_exclusive_group()
+    parser_add_vcs_group.add_argument(
+        "-s", "--svn", action='store_const',
+        dest='vcs', const='svn', default='git',
+        help="Use 'svn' for handling the external")
+    parser_add_vcs_group.add_argument(
+        "-g", "--git-svn", action='store_const',
+        dest='vcs', const='git-svn', default='git',
+        help="Use 'git-svn' for handling the external")
+
+    # subcommand SHOW
+    parser_show = subparsers.add_parser('show')
+    parser_show.set_defaults(func=git_external.cmd_show)
+    parser_show.add_argument(
+        "-r",
+        "--recursive",
+        default=False,
+        action='store_true',
+        help="Show externals recursive"
+    )
 
     # default action: recursive update
-    parser.set_defaults(func=modules[0].cmd_update,
+    parser.set_defaults(func=git_external.cmd_update,
                         recursive=True, automatic=True,
                         external=None, only=None)
-
-    # Find more modules. We search for all files that are named like
-    # our self_path and end with a .py extension. We load these files
-    # with imp and include all classes that have a .commands attribute
-    # to our module list.
-    for fn in os.listdir(os.path.dirname(self_path)):
-        fn_x = os.path.abspath(fn)
-        x = os.path.abspath(self_path)
-        if fn_x.startswith(x) and fn.endswith(".py"):
-            loader = importlib.machinery.SourceFileLoader(fn, fn)
-            F = types.ModuleType(loader.name)
-            loader.exec_module(F)
-            for obj in dir(F):
-                obj = getattr(F, obj)
-                if hasattr(obj, '_commands'):
-                    modules.append(obj())
-
-    for mod in modules:
-        for cmd, help_msg, init in mod._commands:
-            cmd_parser = subparsers.add_parser(cmd, help=help_msg)
-            init(mod, cmd_parser)
 
     args = parser.parse_args()
 
