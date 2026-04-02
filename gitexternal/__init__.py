@@ -28,8 +28,6 @@ except ImportError:
     pass
 log = logging.getLogger("git-external")
 
-defaulturl = "https://raw.githubusercontent.com/stettberger/git-external/master/bin/git-external"
-
 self_path = os.path.relpath(os.path.abspath(sys.argv[0]), ".")
 if "/" not in self_path:
     self_path = "./" + self_path
@@ -78,43 +76,6 @@ class command_description:
         owner._commands.append((self.fn.__name__.replace('_', '-'),
                                 self.fn.__doc__, self.fn))
         setattr(owner, name, self.fn)
-
-
-class InitScript:
-    def __init__(self):
-        self.config = get_git_config()
-
-    @contextlib.contextmanager
-    def _open_url(self, url):
-        """Open url either as http(s) link or as file path and return the file
-        object.
-        """
-        if url.startswith("http"):
-            with urllib.request.urlopen(url) as x:
-                yield x
-        else:
-            with open(os.path.expanduser(url), "rb") as x:
-                yield x
-
-    def cmd_self_update(self, args):
-        """Update the script itself.
-
-        If "updateurl" is given in the git configuration, it is used for update
-        otherwise defaulturl is used. The format can either be a web URL or a
-        file path.
-        """
-        url = self.config["external"].get("updateurl", defaulturl)
-        log.info(f"Fetching {url}")
-        with self._open_url(url) as x:
-            update = x.read()
-            with open(self_path, "wb+") as fd:
-                fd.write(update)
-        log.info(f"Updated {self_path}")
-
-    @command_description
-    def self_update(self, subparser):
-        """update the init script"""
-        subparser.set_defaults(func=self.cmd_self_update)
 
 
 class GitExternal:
@@ -571,8 +532,6 @@ def main():
     subparsers = parser.add_subparsers(help='sub-command help')
 
     modules = [GitExternal()]
-    if os.access(self_path, os.W_OK):
-        modules.append(InitScript())
 
     # default action: recursive update
     parser.set_defaults(func=modules[0].cmd_update,
