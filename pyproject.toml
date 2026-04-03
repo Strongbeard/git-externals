@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "git-external"
+name = "git-externals"
 authors = [
     {name = "Kevin Mahon", email = "Kevin.L.Mahon@gmail.com"},
     {name = "Christian Dietrich", email = "stettberger@dokucode.de"}
@@ -30,4 +30,4 @@ version = "0.1"
 logging = ["coloredlogs"]
 
 [project.scripts]
-git-external = "gitexternal:main"
+git-external = "git_externals:main"
