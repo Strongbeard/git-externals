@@ -15,6 +15,17 @@ import fnmatch
 import contextlib
 import argparse
 import string
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import typing
+    try:
+        from _typeshed import StrPath #, StrOrBytesPath
+    except ImportError:
+        StrPath: typing.TypeAlias = typing.Union[str,os.PathLike[str]]
+        # StrOrBytesPath: typing.TypeAlias = typing.Union[
+        #     str, bytes, 'os.PathLike[str]', 'os.PathLike[bytes]']
 
 import logging
 try:
@@ -33,7 +44,7 @@ if "/" not in self_path:
     self_path = "./" + self_path
 
 
-def get_git_config(file=None, path='.') -> dict:
+def get_git_config(file=None, path: 'StrPath' = '.') -> dict:
     """Return the git configuration as retrieved in the current directory as a
     dictionary.
 
@@ -65,33 +76,36 @@ def get_args(config, option):
 class GitExternal:
     updated_paths = set()
 
-    def __init__(self, path='.'):
+    def __init__(self, path: 'StrPath' = '.'):
         try:
-            self.rootdir = check_output(["git", "rev-parse",
+            _rootdir = check_output(["git", "rev-parse",
                                          "--show-toplevel"], cwd=path)
-            self.rootdir = self.rootdir.decode('utf-8').strip()
+            _rootdir = _rootdir.decode('utf-8').strip()
+            self.rootdir = Path(_rootdir)
         except CalledProcessError as e:
             log.critical("Not a git directory", exc_info=e)
             sys.exit(1)
 
-        self.externals_file = os.path.join(self.rootdir, ".gitexternals")
-        self.ignore_file = os.path.join(self.rootdir, ".gitignore")
+        self.externals_file = self.rootdir.joinpath('.gitexternals')
+        self.ignore_file = self.rootdir.joinpath('.gitignore')
         self.configurations = defaultdict(dict)
-        self.path = path
+        self.path = Path(path)
 
-    def is_git_svn(self, path=None):
+    def is_git_svn(self, path: 'StrPath|None' = None):
         """Check if path is a git svn repository."""
         if path is None:
             path = self.rootdir
+        else:
+            path = Path(path)
 
         # call to 'git svn info' causes git to create an .git/svn (empty)
         # repository, so everyone thinks it is actually a git svn repo (except
         # 'git svn info' itself), so check that before
-        if not os.path.exists(os.path.join(path, '.git', 'svn')):
+        if not path.joinpath('.git', 'svn').exists():
             return False
-        foo = call(["git", "svn", "info"], stdout=DEVNULL, stderr=DEVNULL,
-                   cwd=path)
-        return foo == 0
+        return call(["git", "svn", "info"],
+                    stdout=DEVNULL, stderr=DEVNULL, cwd=path
+        ) == 0
 
     def get_git_svn_externals(self):
         if not self.is_git_svn(path=self.path):
@@ -158,7 +172,7 @@ class GitExternal:
         """
         self.configurations = self.get_git_svn_externals()
 
-        if os.path.exists(self.externals_file):
+        if self.externals_file.exists():
             self.merge_externals(get_git_config(file=self.externals_file))
 
         # Overrides from global config
@@ -206,7 +220,7 @@ class GitExternal:
         vcs    -- Which vcs to use (git, svn, or git-svn).
         script -- Script to run after cloning the external.
         """
-        config = ["git", "config", "-f", self.externals_file, "--replace-all"]
+        config = ["git", "config", "-f", str(self.externals_file), "--replace-all"]
         path = os.path.relpath(os.path.abspath(path), self.rootdir)
         check_call(config + [f"external.{path}.path", path])
         check_call(config + [f"external.{path}.url", url])
@@ -219,7 +233,7 @@ class GitExternal:
         found = False
         # Prepend newline if file does not end with one
         prefix = ""
-        if os.path.exists(self.ignore_file):
+        if self.ignore_file.exists():
             # check if directory is already ignored
             with open(self.ignore_file, "r") as fd:
                 for line in fd:
@@ -232,8 +246,8 @@ class GitExternal:
             with open(self.ignore_file, "a+") as fd:
                 fd.write(prefix + "/" + path + "\n")
 
-        check_call(["git", "add", self.externals_file])
-        check_call(["git", "add", self.ignore_file])
+        check_call(["git", "add", str(self.externals_file)])
+        check_call(["git", "add", str(self.ignore_file)])
 
         log.warning("Added external %s\n  Don't forget to call init", path)
 
