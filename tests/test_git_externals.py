@@ -1,5 +1,6 @@
 #!/bin/python3
 
+from collections import namedtuple
 from pathlib import Path
 import subprocess
 import os
@@ -81,7 +82,18 @@ class GitExternalsTestCase(unittest.TestCase):
         """).strip()
         with open(externals_file_path, encoding="utf-8") as externals_fd:
             self.assertIn(entry, externals_fd.read())
+        gitignore_file_path = git_dir.joinpath(".gitignore")
+        self.assertTrue(gitignore_file_path.exists(), f".gitignore is missing from {git_dir!s}")
+        with open(gitignore_file_path, encoding="utf-8") as gitignore_fd:
+            self.assertIn("/svn_proj", gitignore_fd.read())
 
+        git_external.cmd_update(namedtuple(
+                'Args',
+                ['recursive', 'automatic', 'external', 'only']
+            )(True, False, None, "clone")
+        )
+        self.assertTrue(git_dir.joinpath("svn_proj/file_1.txt").exists())
+        self.assertTrue(git_dir.joinpath("svn_proj/.svn").exists())
 
 if __name__ == '__main__':
     unittest.main()
