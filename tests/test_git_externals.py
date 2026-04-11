@@ -2,7 +2,9 @@
 
 from pathlib import Path
 import subprocess
+import os
 import tempfile
+import textwrap
 import unittest
 from urllib.parse import urlunparse
 
@@ -28,13 +30,15 @@ class GitExternalsTestCase(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self._temp_dir_ctx = tempfile.TemporaryDirectory()
+        # self._temp_dir_ctx = tempfile.TemporaryDirectory(delete=False)
         self.temp_dir = Path(self._temp_dir_ctx.name)
         self.svn_remote_dir = self.temp_dir.joinpath('svn_remote')
         subprocess.run(['svnadmin', 'create', self.svn_remote_dir], check=True)
 
     def tearDown(self):
         super().tearDown()
-        self._temp_dir_ctx.cleanup()
+        print(self.temp_dir)
+        # self._temp_dir_ctx.cleanup()
 
     def test_single_svn_external(self):
         # Setup single svn project with 1 file in trunk
@@ -64,7 +68,20 @@ class GitExternalsTestCase(unittest.TestCase):
         subprocess.run(['git', 'init'], cwd=git_dir, check=True)
 
         # Test GitExternals function call to link external svn repo
-        git_externals.GitExternal(git_dir)
+        git_external = git_externals.GitExternal(git_dir)
+        git_external.add_external(f'file://{svn_remote_proj_trunk_dir!s}', 'svn_proj', vcs="svn")
+        externals_file_path = git_dir.joinpath(".gitexternals")
+        self.assertTrue(externals_file_path.exists(), f".gitexternals is missing from {git_dir!s}")
+        entry=textwrap.dedent(f"""
+            [external "svn_proj"]
+            \tpath = svn_proj
+            \turl = file://{self.temp_dir}/svn_remote/svn_proj/trunk
+            \tbranch = master
+            \tvcs = svn
+        """).strip()
+        with open(externals_file_path, encoding="utf-8") as externals_fd:
+            self.assertIn(entry, externals_fd.read())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -208,12 +208,19 @@ class GitExternal:
                         {k: v for (k, v) in config.items()
                          if not k.startswith('match-')})
 
-    def add_external(self, url, path, branch='master', vcs="git", script=None):
+    def add_external(
+        self,
+        url,
+        path: 'StrPath',
+        branch='master',
+        vcs="git",
+        script=None
+    ):
         """Adding an external by writing it to .gitexternals.
 
         Arguments:
         url  -- URL of the external (source location)
-        path -- Path of the external (target directory)
+        path -- Path of the external relative to git project dir (target directory)
 
         Keyword arguments:
         branch -- Which branch should be cloned/pulled.
@@ -221,13 +228,14 @@ class GitExternal:
         script -- Script to run after cloning the external.
         """
         config = ["git", "config", "-f", str(self.externals_file), "--replace-all"]
-        path = os.path.relpath(os.path.abspath(path), self.rootdir)
-        check_call(config + [f"external.{path}.path", path])
-        check_call(config + [f"external.{path}.url", url])
-        check_call(config + [f"external.{path}.branch", branch])
-        check_call(config + [f"external.{path}.vcs", vcs])
+        # path = Path(path).absolute().relative_to(self.rootdir)
+        path = self.rootdir.joinpath(path).relative_to(self.rootdir)
+        check_call(config + [f"external.{path!s}.path", path], cwd=self.rootdir)
+        check_call(config + [f"external.{path!s}.url", url], cwd=self.rootdir)
+        check_call(config + [f"external.{path!s}.branch", branch], cwd=self.rootdir)
+        check_call(config + [f"external.{path!s}.vcs", vcs], cwd=self.rootdir)
         if script:
-            check_call(config + [f"external.{path}.script", script])
+            check_call(config + [f"external.{path!s}.script", script], cwd=self.rootdir)
 
         # Add path to ignore file
         found = False
@@ -235,19 +243,19 @@ class GitExternal:
         prefix = ""
         if self.ignore_file.exists():
             # check if directory is already ignored
-            with open(self.ignore_file, "r") as fd:
+            with open(self.ignore_file, "r", encoding="utf-8") as fd:
                 for line in fd:
                     prefix = "" if line.endswith("\n") else "\n"
-                    if line.strip() in (path, "./" + path, "/" + path):
+                    if line.strip() in (path, "./" + str(path), "/" + str(path)):
                         found = True
                         break
         # append to .gitignore
         if not found:
-            with open(self.ignore_file, "a+") as fd:
-                fd.write(prefix + "/" + path + "\n")
+            with open(self.ignore_file, "a+", encoding="utf-8") as fd:
+                fd.write(prefix + "/" + str(path) + "\n")
 
-        check_call(["git", "add", str(self.externals_file)])
-        check_call(["git", "add", str(self.ignore_file)])
+        check_call(["git", "add", str(self.externals_file)], cwd=self.rootdir)
+        check_call(["git", "add", str(self.ignore_file)], cwd=self.rootdir)
 
         log.warning("Added external %s\n  Don't forget to call init", path)
 
