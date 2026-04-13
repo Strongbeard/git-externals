@@ -4,6 +4,7 @@ import os
 import re
 import stat
 import sys
+import logging
 from subprocess import check_output, check_call, call, run, CalledProcessError
 from subprocess import DEVNULL
 from collections import defaultdict, namedtuple
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
         # StrOrBytesPath: typing.TypeAlias = typing.Union[
         #     str, bytes, 'os.PathLike[str]', 'os.PathLike[bytes]']
 
-import logging
 try:
     import coloredlogs
     colors = coloredlogs.parse_encoded_styles("debug=green;info=green;warning=yellow,bold;error=red;critical=red,bold")
@@ -36,7 +36,8 @@ try:
                         level_styles=colors, field_styles=fields)
 except ImportError:
     logging.basicConfig(level=logging.INFO)
-    pass
+
+
 log = logging.getLogger("git-external")
 
 self_path = os.path.relpath(os.path.abspath(sys.argv[0]), ".")
@@ -73,8 +74,22 @@ def get_args(config, option):
         return [x for x in opts if x]
     return []
 
+def create_symlink(src: 'StrPath', dst: 'StrPath'):
+    src = Path(src)
+    dst = Path(dst)
+    src = src.expanduser()
+    if dst.exists():
+        if not dst.is_symlink():
+            raise RuntimeError(f"Cannot create symlink at {src}->{dst}")
+        if src.resolve() != dst.resolve():
+            dst.unlink()
+        else:
+            return False
+    src.symlink_to(dst)
+    return True
+
 class GitExternal:
-    updated_paths = set()
+    updated_paths: 'set[Path]' = set()
 
     def __init__(self, path: 'StrPath' = '.'):
         try:
@@ -259,15 +274,15 @@ class GitExternal:
 
         log.warning("Added external %s\n  Don't forget to call init", path)
 
-    def is_repository(self, path: str) -> bool:
+    def is_repository(self, path: 'StrPath') -> bool:
         """Check if path is a git or SVN repository."""
-        return any([os.path.exists(os.path.join(path, x))
-                    for x in ['.git', '.svn']])
+        path = Path(path)
+        return any(path.joinpath(x).exists() for x in ('.git', '.svn'))
 
-    def get_branch_name(self, path):
+    def get_branch_name(self, path: 'StrPath'):
         """Returns the current branch name or 'DETACHED'"""
         cur_branch = run(["git", "symbolic-ref", "--short", "HEAD"],
-                         cwd=path, capture_output=True)
+                         cwd=path, capture_output=True, check=True)
         ret = cur_branch.stdout.decode().strip()
         return ret or None
 
@@ -299,7 +314,7 @@ class GitExternal:
             raise RuntimeError(f"External '{external}' not found")
 
         for repo, config in self.configurations.items():
-            path = os.path.join(self.rootdir, config["path"])
+            path = self.rootdir.joinpath(config["path"])
             vcs = config.get("vcs", "git").lower()
 
             # Handle only a single external
@@ -315,13 +330,12 @@ class GitExternal:
                 repo_only = ('clone', 'update')
 
             if 'update' in repo_only and self.is_repository(path):
-                realpath = os.path.realpath(path)
+                realpath = path.resolve(True)
                 # Update that external
                 if realpath in GitExternal.updated_paths:
                     log.info("[%s] Already updated. Skipping.", repo)
                     return
-                else:
-                    GitExternal.updated_paths.add(realpath)
+                GitExternal.updated_paths.add(realpath)
 
                 if vcs == "git-svn":
                     log.info("[%s] Updating GIT-SVN external", repo)
@@ -349,21 +363,6 @@ class GitExternal:
                 auto = auto_values.get(config.get('auto', 'true').lower())
                 if not auto and not external:
                     continue
-                
-                # Clone or Symlink that repo
-                do_symlink = False
-
-                def create_symlink(src, dst):
-                    src = os.path.expanduser(src)
-                    if os.path.exists(dst):
-                        if not os.path.islink(path):
-                            raise RuntimeError(f"Cannot create symlink at {src}->{dst}")
-                        if os.path.realpath(src) != os.path.realpath(dst):
-                            os.unlink(dst)
-                        else:
-                            return False
-                    os.symlink(src, dst)
-                    return True
 
                 if config.get("symlink"):
                     if create_symlink(config.get("symlink"), path):
@@ -387,7 +386,7 @@ class GitExternal:
                     branch = config.get("branch", "master")
                     opts = get_args(config, "cloneArgs")
                     log.info("[%s] Cloning Git external, %s", repo, opts)
-                    cmd = ["git", "clone"] + opts + [config["url"], path]
+                    cmd = ["git", "clone"] + opts + [config["url"], str(path)]
                     print(" ".join(cmd))
                     check_call(cmd)
                     self.update_sparse_checkout(repo, path, config)
