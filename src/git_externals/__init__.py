@@ -27,7 +27,10 @@ if TYPE_CHECKING:
         StrPath: typing.TypeAlias = typing.Union[str,os.PathLike[str]]
         # StrOrBytesPath: typing.TypeAlias = typing.Union[
         #     str, bytes, 'os.PathLike[str]', 'os.PathLike[bytes]']
-
+    try:
+        from .externals_config import ExternalsConfig
+    except ImportError:
+        pass
 try:
     import coloredlogs
     colors = coloredlogs.parse_encoded_styles("debug=green;info=green;warning=yellow,bold;error=red;critical=red,bold")
@@ -45,7 +48,7 @@ if "/" not in self_path:
     self_path = "./" + self_path
 
 
-def get_git_config(file=None, path: 'StrPath' = '.') -> dict:
+def get_git_config(file=None, path: 'StrPath' = '.') -> 'dict[str, ExternalsConfig]':
     """Return the git configuration as retrieved in the current directory as a
     dictionary.
 
@@ -54,7 +57,7 @@ def get_git_config(file=None, path: 'StrPath' = '.') -> dict:
     file_cmd = []
     if file:
         file_cmd = ["-f", file]
-    config = defaultdict(dict)
+    config: 'dict[str, ExternalsConfig]' = defaultdict(dict)
     lines = check_output(["git", "config", "-l"] + file_cmd, cwd=path)
     lines = lines.decode("utf-8").split("\n")
     for line in lines:
