@@ -30,4 +30,4 @@ version = "0.1"
 logging = ["coloredlogs"]
 
 [project.scripts]
-git-external = "git_externals:main"
+git-externals = "git_externals:main"
