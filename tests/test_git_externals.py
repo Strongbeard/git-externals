@@ -1,7 +1,10 @@
 #!/bin/python3
 
 from collections import namedtuple
-from contextlib import chdir
+try:
+    from contextlib import chdir
+except ImportError:
+    from .contextlib_shim import chdir
 
 import textwrap
 import unittest
