@@ -5,7 +5,7 @@ import re
 import stat
 import sys
 import logging
-from subprocess import check_output, check_call, call, run, CalledProcessError
+from subprocess import check_output, check_call, call, run, PIPE, CalledProcessError
 from subprocess import DEVNULL
 from collections import defaultdict, namedtuple
 import urllib.request
@@ -282,7 +282,7 @@ class GitExternal:
     def get_branch_name(self, path: 'StrPath'):
         """Returns the current branch name or 'DETACHED'"""
         cur_branch = run(["git", "symbolic-ref", "--short", "HEAD"],
-                         cwd=path, capture_output=True, check=True)
+                         cwd=path, stdout=PIPE, stderr=PIPE, check=True)
         ret = cur_branch.stdout.decode().strip()
         return ret or None
 
