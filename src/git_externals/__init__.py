@@ -1,5 +1,5 @@
 import argparse
-from pathlib import Path
+import pathlib
 import subprocess
 import sys
 
@@ -30,7 +30,7 @@ def _cmd_show(git_external: GitExternal, **kwargs):
         print(f'[external "{repo}"]')
         for key, value in config.items():
             print(f'  {key} = {value}')
-        if kwargs['recursive'] and Path(config['path']).joinpath('.gitexternals').exists():
+        if kwargs['recursive'] and pathlib.Path(config['path']).joinpath('.gitexternals').exists():
             x = subprocess.check_output(['./init', 'show'], cwd=config['path'])
             print((b"\t"+x.replace(b"\n", b"\n\t")).decode())
 
