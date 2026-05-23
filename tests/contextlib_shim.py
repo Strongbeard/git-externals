@@ -1,9 +1,10 @@
-'''
+"""
 Shim for contextlib functions that are not part of python3.6
-'''
+"""
 
 import contextlib
 import os
+
 
 class chdir(contextlib.AbstractContextManager):
     """Non thread-safe context manager to change the current working directory."""
