@@ -275,7 +275,7 @@ class GitExternal:
     def get_branch_name(self, path: 'StrPath'):
         """Returns the current branch name or 'DETACHED'"""
         cur_branch = subp.run(["git", "symbolic-ref", "--short", "HEAD"],
-                         cwd=path, capture_output=True, check=True)
+                         cwd=path, stdout=subp.PIPE, stderr=subp.PIPE, check=True)
         ret = cur_branch.stdout.decode().strip()
         return ret or None
 

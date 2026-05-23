@@ -13,7 +13,7 @@ maintainers = [
 ]
 description = "Provide an SVN external mechanism for git"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.6"
 keywords = ["git", "svn"]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
