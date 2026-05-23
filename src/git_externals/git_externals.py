@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
 """Add other Git directories as externals (subfolders)."""
+
+import collections
+import fnmatch
+import logging
 import os
+import pathlib
 import re
 import stat
-import sys
-from subprocess import check_output, check_call, call, run, CalledProcessError
-from subprocess import DEVNULL
-from collections import defaultdict, namedtuple
-import urllib.request
-import types
-import importlib
-import importlib.machinery
-import fnmatch
-import contextlib
-import argparse
 import string
+import subprocess as subp
+import sys
+from typing import TYPE_CHECKING
 
-import logging
+if TYPE_CHECKING:
+    import typing
+    try:
+        from _typeshed import StrPath #, StrOrBytesPath
+    except ImportError:
+        StrPath: typing.TypeAlias = typing.Union[str,os.PathLike[str]]
+        # StrOrBytesPath: typing.TypeAlias = typing.Union[
+        #     str, bytes, 'os.PathLike[str]', 'os.PathLike[bytes]']
+
 try:
     import coloredlogs
     colors = coloredlogs.parse_encoded_styles("debug=green;info=green;warning=yellow,bold;error=red;critical=red,bold")
@@ -25,17 +30,16 @@ try:
                         level_styles=colors, field_styles=fields)
 except ImportError:
     logging.basicConfig(level=logging.INFO)
-    pass
-log = logging.getLogger("git-external")
 
-defaulturl = "https://raw.githubusercontent.com/stettberger/git-external/master/bin/git-external"
+
+log = logging.getLogger("git-external")
 
 self_path = os.path.relpath(os.path.abspath(sys.argv[0]), ".")
 if "/" not in self_path:
     self_path = "./" + self_path
 
 
-def get_git_config(file=None, path='.') -> dict:
+def get_git_config(file=None, path: 'StrPath' = '.') -> dict:
     """Return the git configuration as retrieved in the current directory as a
     dictionary.
 
@@ -44,8 +48,8 @@ def get_git_config(file=None, path='.') -> dict:
     file_cmd = []
     if file:
         file_cmd = ["-f", file]
-    config = defaultdict(dict)
-    lines = check_output(["git", "config", "-l"] + file_cmd, cwd=path)
+    config = collections.defaultdict(dict)
+    lines = subp.check_output(["git", "config", "-l"] + file_cmd, cwd=path)
     lines = lines.decode("utf-8").split("\n")
     for line in lines:
         m = re.match(r"external\.([^=]+)\.([^=.]+)=(.*)", line)
@@ -64,42 +68,58 @@ def get_args(config, option):
         return [x for x in opts if x]
     return []
 
+def create_symlink(src: 'StrPath', dst: 'StrPath'):
+    src = pathlib.Path(src)
+    dst = pathlib.Path(dst)
+    src = src.expanduser()
+    if dst.exists():
+        if not dst.is_symlink():
+            raise RuntimeError(f"Cannot create symlink at {src}->{dst}")
+        if src.resolve() != dst.resolve():
+            dst.unlink()
+        else:
+            return False
+    src.symlink_to(dst)
+    return True
 
 class GitExternal:
-    updated_paths = set()
+    updated_paths: 'set[pathlib.Path]' = set()
 
-    def __init__(self, path='.'):
+    def __init__(self, path: 'StrPath' = '.'):
         try:
-            self.rootdir = check_output(["git", "rev-parse",
+            _rootdir = subp.check_output(["git", "rev-parse",
                                          "--show-toplevel"], cwd=path)
-            self.rootdir = self.rootdir.decode('utf-8').strip()
-        except CalledProcessError as e:
-            log.critical("Not a git directory", e)
+            _rootdir = _rootdir.decode('utf-8').strip()
+            self.rootdir = pathlib.Path(_rootdir)
+        except subp.CalledProcessError as e:
+            log.critical("Not a git directory", exc_info=e)
             sys.exit(1)
 
-        self.externals_file = os.path.join(self.rootdir, ".gitexternals")
-        self.ignore_file = os.path.join(self.rootdir, ".gitignore")
-        self.configurations = defaultdict(dict)
-        self.path = path
+        self.externals_file = self.rootdir.joinpath('.gitexternals')
+        self.ignore_file = self.rootdir.joinpath('.gitignore')
+        self.configurations = collections.defaultdict(dict)
+        self.path = pathlib.Path(path)
 
-    def is_git_svn(self, path=None):
+    def is_git_svn(self, path: 'StrPath|None' = None):
         """Check if path is a git svn repository."""
         if path is None:
             path = self.rootdir
+        else:
+            path = pathlib.Path(path)
 
         # call to 'git svn info' causes git to create an .git/svn (empty)
         # repository, so everyone thinks it is actually a git svn repo (except
         # 'git svn info' itself), so check that before
-        if not os.path.exists(os.path.join(path, '.git', 'svn')):
+        if not path.joinpath('.git', 'svn').exists():
             return False
-        foo = call(["git", "svn", "info"], stdout=DEVNULL, stderr=DEVNULL,
-                   cwd=path)
-        return foo == 0
+        return subp.call(["git", "svn", "info"],
+                    stdout=subp.DEVNULL, stderr=subp.DEVNULL, cwd=path
+        ) == 0
 
     def get_git_svn_externals(self):
         if not self.is_git_svn(path=self.path):
-            return defaultdict(dict)
-        exts = check_output(["git", "svn", "show-externals"],
+            return collections.defaultdict(dict)
+        exts = subp.check_output(["git", "svn", "show-externals"],
                             cwd=self.path).decode()
 
         # git svn is strange here, sometimes the url is the second group,
@@ -114,7 +134,7 @@ class GitExternal:
         # |/other/path/to/external2 https://host.de/repo
         # `----
 
-        externals = defaultdict(dict)
+        externals = collections.defaultdict(dict)
         prefix = ""
         for line in exts.split('\n'):
             m = re.match(r"^# (.*)", line)
@@ -150,7 +170,7 @@ class GitExternal:
                        if self.configurations[x]['path'].startswith(path)]
             for match in matches:
                 del self.configurations[match]
-                log.warning(f"External '{repo}' is masking '{match}'")
+                log.warning("External '%s' is masking '%s'", repo, match)
             self.configurations[repo] = new_externals[repo]
 
     def load_configuration(self):
@@ -161,7 +181,7 @@ class GitExternal:
         """
         self.configurations = self.get_git_svn_externals()
 
-        if os.path.exists(self.externals_file):
+        if self.externals_file.exists():
             self.merge_externals(get_git_config(file=self.externals_file))
 
         # Overrides from global config
@@ -197,58 +217,65 @@ class GitExternal:
                         {k: v for (k, v) in config.items()
                          if not k.startswith('match-')})
 
-    def add_external(self, url, path, branch='master', vcs="git", script=None):
+    def add_external(
+        self,
+        url,
+        path: 'StrPath',
+        branch='master',
+        vcs="git",
+        script=None
+    ):
         """Adding an external by writing it to .gitexternals.
 
         Arguments:
         url  -- URL of the external (source location)
-        path -- Path of the external (target directory)
+        path -- Path of the external relative to git project dir (target directory)
 
         Keyword arguments:
         branch -- Which branch should be cloned/pulled.
         vcs    -- Which vcs to use (git, svn, or git-svn).
         script -- Script to run after cloning the external.
         """
-        config = ["git", "config", "-f", self.externals_file, "--replace-all"]
-        path = os.path.relpath(os.path.abspath(path), self.rootdir)
-        check_call(config + [f"external.{path}.path", path])
-        check_call(config + [f"external.{path}.url", url])
-        check_call(config + [f"external.{path}.branch", branch])
-        check_call(config + [f"external.{path}.vcs", vcs])
+        config = ["git", "config", "-f", str(self.externals_file), "--replace-all"]
+        path = self.rootdir.joinpath(path).relative_to(self.rootdir)
+        subp.check_call(config + [f"external.{path!s}.path", path], cwd=self.rootdir)
+        subp.check_call(config + [f"external.{path!s}.url", url], cwd=self.rootdir)
+        subp.check_call(config + [f"external.{path!s}.branch", branch], cwd=self.rootdir)
+        subp.check_call(config + [f"external.{path!s}.vcs", vcs], cwd=self.rootdir)
         if script:
-            check_call(config + [f"external.{path}.script", script])
+            subp.check_call(config + [f"external.{path!s}.script", script], cwd=self.rootdir)
 
         # Add path to ignore file
         found = False
         # Prepend newline if file does not end with one
         prefix = ""
-        if os.path.exists(self.ignore_file):
+        if self.ignore_file.exists():
             # check if directory is already ignored
-            with open(self.ignore_file, "r") as fd:
+            with open(self.ignore_file, "r", encoding="utf-8") as fd:
                 for line in fd:
                     prefix = "" if line.endswith("\n") else "\n"
-                    if line.strip() in (path, "./" + path, "/" + path):
+                    if line.strip() in (path, "./" + str(path), "/" + str(path)):
                         found = True
                         break
         # append to .gitignore
         if not found:
-            with open(self.ignore_file, "a+") as fd:
-                fd.write(prefix + "/" + path + "\n")
+            with open(self.ignore_file, "a+", encoding="utf-8") as fd:
+                fd.write(prefix + "/" + str(path) + "\n")
 
-        check_call(["git", "add", self.externals_file])
-        check_call(["git", "add", self.ignore_file])
+        subp.check_call(["git", "add", str(self.externals_file)], cwd=self.rootdir)
+        subp.check_call(["git", "add", str(self.ignore_file)], cwd=self.rootdir)
 
-        log.warning("Added external %s\n  Don't forget to call init" % (path))
+        log.warning("Added external %s\n  Don't forget to call init", path)
 
-    def is_repository(self, path: str) -> bool:
+    def is_repository(self, path: 'StrPath') -> bool:
         """Check if path is a git or SVN repository."""
-        return any([os.path.exists(os.path.join(path, x))
-                    for x in ['.git', '.svn']])
+        path = pathlib.Path(path)
+        return any(path.joinpath(x).exists() for x in ('.git', '.svn'))
 
-    def get_branch_name(self, path):
+    def get_branch_name(self, path: 'StrPath'):
         """Returns the current branch name or 'DETACHED'"""
-        cur_branch = run(["git", "symbolic-ref", "--short", "HEAD"],
-                         cwd=path, capture_output=True)
+        cur_branch = subp.run(["git", "symbolic-ref", "--short", "HEAD"],
+                         cwd=path, capture_output=True, check=True)
         ret = cur_branch.stdout.decode().strip()
         return ret or None
 
@@ -258,12 +285,12 @@ class GitExternal:
         cur_dir = os.curdir
         os.chdir(path)
         if sparse_checkout:
-            log.info(f"[{repo}] Setting sparse-checkout to {sparse_checkout}")
+            log.info("[%s] Setting sparse-checkout to %s", repo, sparse_checkout)
             cmd = ["git", "sparse-checkout", "set"] + sparse_checkout     
         else:
-            log.info(f"[{repo}] Sparse checkout not in use, disabled")        
+            log.info("[%s] Sparse checkout not in use, disabled", repo)
             cmd = ["git", "sparse-checkout", "disable"]
-        check_call(cmd)
+        subp.check_call(cmd)
         os.chdir(cur_dir)
 
     def init_or_update(self, recursive=True, only=None, external=None):
@@ -277,10 +304,10 @@ class GitExternal:
         external  -- specify that only one external should be cloned or updated
         """
         if external and external not in self.configurations:
-            raise RuntimeError("External '%s' not found" % external)
+            raise RuntimeError(f"External '{external}' not found")
 
         for repo, config in self.configurations.items():
-            path = os.path.join(self.rootdir, config["path"])
+            path = self.rootdir.joinpath(config["path"])
             vcs = config.get("vcs", "git").lower()
 
             # Handle only a single external
@@ -296,32 +323,32 @@ class GitExternal:
                 repo_only = ('clone', 'update')
 
             if 'update' in repo_only and self.is_repository(path):
-                realpath = os.path.realpath(path)
+                realpath = path.resolve(True)
                 # Update that external
                 if realpath in GitExternal.updated_paths:
-                    log.info(f"[{repo}] Already updated. Skipping.")
+                    log.info("[%s] Already updated. Skipping.", repo)
                     return
-                else:
-                    GitExternal.updated_paths.add(realpath)
+                GitExternal.updated_paths.add(realpath)
 
                 if vcs == "git-svn":
-                    log.info(f"[{repo}] Updating GIT-SVN external")
-                    check_call(["git", "svn", "rebase"], cwd=path)
+                    log.info("[%s] Updating GIT-SVN external", repo)
+                    subp.check_call(["git", "svn", "rebase"], cwd=path)
                 elif vcs == "svn":
-                    log.info("[{repo}] Updating Git SVN external")
-                    check_call(["svn", "up"], cwd=path)
+                    log.info("[%s] Updating Git SVN external", repo)
+                    subp.check_call(["svn", "up"], cwd=path)
                 else:
                     cur_branch = self.get_branch_name(path)
                     branch = config.get("branch") or "master"
                     if branch == cur_branch:
                         opts = get_args(config, "updateArgs")
-                        log.info(f"[{repo}] Updating Git external, {opts}")
-                        check_call(["git", "pull", "--ff-only"] + opts, cwd=path)
+                        log.info("[%s] Updating Git external, %s", repo, opts)
+                        subp.check_call(["git", "pull", "--ff-only"] + opts, cwd=path)
                         self.update_sparse_checkout(repo, path, config)
                     elif cur_branch is None:
-                        log.warning(f"[{repo}] Skipping update, detached HEAD")
+                        log.warning("[%s] Skipping update, detached HEAD", repo)
                     else:
-                        log.warning(f"[{repo}] Skipping update, different branch: {branch} != {cur_branch}")
+                        log.warning("[%s] Skipping update, different branch: %s != %s",
+                                    repo, branch, cur_branch)
             elif 'clone' in repo_only and not self.is_repository(path):
                 # If an external is non-auto, then we skip it, if it
                 # is not explicitly mentioned as an argument.
@@ -329,67 +356,52 @@ class GitExternal:
                 auto = auto_values.get(config.get('auto', 'true').lower())
                 if not auto and not external:
                     continue
-                
-                # Clone or Symlink that repo
-                do_symlink = False
-
-                def create_symlink(src, dst):
-                    src = os.path.expanduser(src)
-                    if os.path.exists(dst):
-                        if not os.path.islink(path):
-                            raise RuntimeError(f"Cannot create symlink at {src}->{dst}")
-                        if os.path.realpath(src) != os.path.realpath(dst):
-                            os.unlink(dst)
-                        else:
-                            return False
-                    os.symlink(src, dst)
-                    return True
 
                 if config.get("symlink"):
                     if create_symlink(config.get("symlink"), path):
-                        log.info(f"Cloning symlinked external: {repo}")
+                        log.info("Cloning symlinked external: %s", repo)
                         return
 
                 if vcs == "none":
                     if create_symlink(config.get("url"), path):
-                        log.info(f"Cloning symlinked external: {repo}")
+                        log.info("Cloning symlinked external: %s", repo)
                     else:
-                        log.info(f"[{repo}] VCS=none; skipping clone/update")
+                        log.info("[%s] VCS=none; skipping clone/update", repo)
                 elif vcs == "git-svn":
-                    log.info(f"[{repo}] Cloning Git SVN external")
-                    check_call(["git", "svn", "clone", config["url"],
+                    log.info("[%s] Cloning Git SVN external", repo)
+                    subp.check_call(["git", "svn", "clone", config["url"],
                                 path, "-r", "HEAD"])
                 elif vcs == "svn":
-                    log.info("[{repo}] Cloning SVN external")
-                    check_call(["svn", "checkout", config["url"],
+                    log.info("[%s] Cloning SVN external", repo)
+                    subp.check_call(["svn", "checkout", config["url"],
                                 path, ])
                 else:
                     branch = config.get("branch", "master")
                     opts = get_args(config, "cloneArgs")
-                    log.info(f"[{repo}] Cloning Git external, {opts}")
-                    cmd = ["git", "clone"] + opts + [config["url"], path]
+                    log.info("[%s] Cloning Git external, %s", repo, opts)
+                    cmd = ["git", "clone"] + opts + [config["url"], str(path)]
                     print(" ".join(cmd))
-                    check_call(cmd)
+                    subp.check_call(cmd)
                     self.update_sparse_checkout(repo, path, config)
                     cur_branch = self.get_branch_name(path)
                     branch = config.get('branch') or "master"
                     if cur_branch != branch:
-                        log.info(f"[{repo}] Switching branch {cur_branch} -> {branch}")
-                        check_call(["git", "checkout", branch], cwd=path)
+                        log.info("[%s] Switching branch %s -> %s", repo, cur_branch, branch)
+                        subp.check_call(["git", "checkout", branch], cwd=path)
 
             elif 'clone' in repo_only and self.is_repository(path):
                 if vcs == "git":
                     cur_branch = self.get_branch_name(path)
                     branch = config.get('branch') or "master"
                     if cur_branch != branch:
-                        log.info(f"[{repo}] Switching branch {cur_branch} -> {branch}")
-                        check_call(["git", "checkout", branch],
+                        log.info("[%s] Switching branch %s -> %s", repo, cur_branch, branch)
+                        subp.check_call(["git", "checkout", branch],
                                    cwd=path)
 
             # recursively call for externals
             if (recursive and vcs in ['git', 'git-svn'] and
                     set(repo_only) & set(['clone', 'update'])):
-                log.info(f"[{repo}] Updating recursive externals")
+                log.info("[%s] Updating recursive externals", repo)
                 ext = GitExternal(path=path)
                 ext.update(True, False, None, None)
 
@@ -398,26 +410,26 @@ class GitExternal:
             if script:
                 script_path = os.path.join(self.rootdir, script)
                 if os.path.exists(script_path):
-                    log.info(f"[{repo}] Running script: {script_path}")
+                    log.info("[%s] Running script: %s", repo, script_path)
                      # Ensure the script is executable
                     st = os.stat(script_path)
                     os.chmod(script_path, st.st_mode | stat.S_IEXEC)
-                    call([script_path], cwd=self.rootdir)
+                    subp.call([script_path], cwd=self.rootdir)
                 else:
-                    log.error(f"[{repo}] Script '{script}' not found at: {script_path}")
+                    log.error("[%s] Script '%s' not found at: %s", repo, script, script_path)
                     
 
             if config.get("run-init", "").lower() == "true":
                 init = os.path.join(path, "init")
-                log.info(f"Running init: {init}")
+                log.info("Running init: %s", init)
                 if os.path.exists(init):
-                    call(init, cwd=path)
+                    subp.call(init, cwd=path)
 
     def install_hook(self):
         """Install the script into git hooks, so it is executed every
         merge/pull.
         """
-        hook_dir = check_output(["git", "rev-parse", "--git-path", "hooks"])
+        hook_dir = subp.check_output(["git", "rev-parse", "--git-path", "hooks"])
         hook_dir = hook_dir.decode().strip()
         hook = os.path.join(hook_dir, "post-merge")
         if os.path.exists(hook_dir) and not os.path.exists(hook):
