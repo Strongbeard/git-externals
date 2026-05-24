@@ -1,9 +1,25 @@
-# git-external
+# git-externals
 
 You are tired of git-submodules? For some us cases, we all were
 tempted to scream at git submodules, since they do not work as
 `svn:externals` work. git-external supports git, svn, and git-svn remotes as
 externals.
+
+## Installation
+
+`git-externals` can be installed via `pip` or an equivalent via:
+
+        pip install git-externals
+
+## Usage
+
+Add an externals repo to current repo
+
+        git externals add URL PATH
+
+Update all externals or specific externals
+
+        git externals update <PATH>
 
 ## Project Lore
 
@@ -26,7 +42,6 @@ have strong opinions on some design choices:
   adding it to the shell's PATH should be a more robust approach.
 - Might as well modernize the build tooling to match the
   [python dev's recommendations](https://packaging.python.org/en/latest/guides/tool-recommendations/#building-distributions).
-
 
 ## Why?
 
@@ -162,19 +177,3 @@ be employed by overrides:
 
 Instead of cloning always a new instance of the bib repository there
 exists only one instance of it that is always symlinked.
-
-
-## Getting Started
-
-1. Install `git-external` into your git repo as `./init`
-
-         wget https://raw.githubusercontent.com/stettberger/git-external/master/bin/git-external -O init
-         chmod u+x init
-
-2. Add an external repository
-
-        ./init add https://github.com/stettberger/ispositive.git is-positive-git
-
-3. Initial clone or whenever you feel like an update is needed
-
-        ./init
