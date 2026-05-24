@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-externals"
+authors = [
+    {name = "Kevin Mahon", email = "Kevin.L.Mahon@gmail.com"},
+    {name = "Christian Dietrich", email = "stettberger@dokucode.de"}
+]
+maintainers = [
+    {name = "Kevin Mahon", email = "Kevin.L.Mahon@gmail.com"}
+]
+description = "Provide an SVN external mechanism for git"
+readme = "README.md"
+requires-python = ">=3.6"
+keywords = ["git", "svn"]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Version Control"
+]
+version = "0.1.0"
+
+[project.optional-dependencies]
+logging = ["coloredlogs"]
+
+[project.scripts]
+git-externals = "git_externals:main"
